@@ -1,55 +1,136 @@
-# Upload the 3 ZIP files via drag & drop into the file explorer
-# Then run:
+// services/ai/modelManager.ts
+// GGUF model download / cache / path management for llama.rn offline inference
+import * as FileSystem from 'expo-file-system';
 
-# 1. Apply the code fixes
-unzip img-vdo-upgrade.zip -d /tmp/upgrade
-cp /tmp/upgrade/package.json ./
-cp /tmp/upgrade/apps/api/package.json ./apps/api/
-cp /tmp/upgrade/apps/worker/package.json ./apps/worker/
-cp /tmp/upgrade/apps/web/package.json ./apps/web/
-cp /tmp/upgrade/packages/shared/package.json ./packages/shared/
-cp /tmp/upgrade/packages/video-generator/package.json ./packages/video-generator/
-cp /tmp/upgrade/apps/api/src/index.ts ./apps/api/src/
-cp /tmp/upgrade/apps/worker/src/index.ts ./apps/worker/src/
-cp /tmp/upgrade/apps/api/src/routes/auth.ts ./apps/api/src/routes/
-cp /tmp/upgrade/packages/video-generator/src/index.ts ./packages/video-generator/src/
-cp /tmp/upgrade/packages/video-generator/src/storage.ts ./packages/video-generator/src/
-cp /tmp/upgrade/Dockerfile ./
-cp /tmp/upgrade/docker-compose.yml ./
-
-# 2. Apply Android config
-unzip img-vdo-android.zip -d /tmp/android
-cp /tmp/android/capacitor.config.ts ./apps/web/
-cp /tmp/android/next.config.js ./apps/web/
-cp /tmp/android/api-client.ts ./apps/web/src/lib/
-mkdir -p ./apps/web/android/app/src/main/res/xml
-cp /tmp/android/network_security_config.xml ./apps/web/android/app/src/main/res/xml/ 2>/dev/null || true
-
-# 3. Apply cloud deployment config
-unzip img-vdo-cloud-config.zip -d /tmp/cloud
-cp /tmp/cloud/.github/workflows/build-android.yml ./.github/workflows/
-cp /tmp/cloud/railway.json ./
-cp /tmp/cloud/render.yaml ./
-cp /tmp/cloud/fly.toml ./
-cp /tmp/cloud/docker-compose.cloud.yml ./
-cp /tmp/cloud/Caddyfile ./
-cp /tmp/cloud/.env.cloud.example ./.env
-cp /tmp/cloud/setup-cloud.sh ./
-
-# 4. Create the missing redis-client.ts
-mkdir -p apps/api/src/lib
-cat > apps/api/src/lib/redis-client.ts << 'EOF'
-import { createClient } from "redis";
-let client: ReturnType<typeof createClient> | null = null;
-export async function getRedis() {
-  if (client) return client;
-  client = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
-  client.on("error", (err) => console.error("Redis error:", err));
-  await client.connect();
-  return client;
+export interface OfflineModel {
+  id: string;
+  name: string;
+  url: string;
+  sizeMB: number;
+  description: string;
 }
-EOF
 
-# 5. Run setup
-chmod +x setup-cloud.sh
-./setup-cloud.sh
+export const OFFLINE_MODELS: OfflineModel[] = [
+  {
+    id: 'qwen2.5-0.5b-instruct',
+    name: 'Qwen2.5 0.5B Instruct',
+    url: 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
+    sizeMB: 470,
+    description: 'Smallest & fastest. Good for quick code snippets.',
+  },
+  {
+    id: 'llama-3.2-1b-instruct',
+    name: 'Llama 3.2 1B Instruct',
+    url: 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
+    sizeMB: 780,
+    description: 'Balanced quality/speed for on-device chat.',
+  },
+  {
+    id: 'smollm2-1.7b-instruct',
+    name: 'SmolLM2 1.7B Instruct',
+    url: 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf',
+    sizeMB: 1100,
+    description: 'Best offline quality of the three.',
+  },
+];
+
+export interface DownloadProgress {
+  progress: number; // 0..1
+  downloadedBytes: number;
+  totalBytes: number;
+}
+
+class ModelManager {
+  private modelsDir = `${FileSystem.documentDirectory}models/`;
+  private activeDownloads: Map<string, FileSystem.DownloadResumable> = new Map();
+
+  private async ensureDir(): Promise<void> {
+    const info = await FileSystem.getInfoAsync(this.modelsDir);
+    if (!info.exists) {
+      await FileSystem.makeDirectoryAsync(this.modelsDir, { intermediates: true });
+    }
+  }
+
+  getModelPath(modelId: string): string {
+    return `${this.modelsDir}${modelId}.gguf`;
+  }
+
+  findModel(modelId: string): OfflineModel | undefined {
+    return OFFLINE_MODELS.find((m) => m.id === modelId);
+  }
+
+  async isModelDownloaded(modelId: string): Promise<boolean> {
+    const info = await FileSystem.getInfoAsync(this.getModelPath(modelId));
+    return info.exists && !info.isDirectory && (info.size ?? 0) > 0;
+  }
+
+  async downloadModel(
+    modelId: string,
+    onProgress?: (p: DownloadProgress) => void
+  ): Promise<string> {
+    const model = this.findModel(modelId);
+    if (!model) throw new Error(`Unknown model: ${modelId}`);
+
+    await this.ensureDir();
+
+    if (await this.isModelDownloaded(modelId)) {
+      onProgress?.({ progress: 1, downloadedBytes: 0, totalBytes: 0 });
+      return this.getModelPath(modelId);
+    }
+
+    const dest = this.getModelPath(modelId);
+    const resumable = FileSystem.createDownloadResumable(
+      model.url,
+      dest,
+      {},
+      (downloadProgress) => {
+        const total = downloadProgress.totalBytesExpectedToWrite;
+        const done = downloadProgress.totalBytesWritten;
+        onProgress?.({
+          progress: total > 0 ? done / total : 0,
+          downloadedBytes: done,
+          totalBytes: total,
+        });
+      }
+    );
+
+    this.activeDownloads.set(modelId, resumable);
+    try {
+      const result = await resumable.downloadAsync();
+      if (!result || !result.uri) throw new Error('Download failed');
+      return result.uri;
+    } finally {
+      this.activeDownloads.delete(modelId);
+    }
+  }
+
+  async cancelDownload(modelId: string): Promise<void> {
+    const resumable = this.activeDownloads.get(modelId);
+    if (resumable) await resumable.pauseAsync();
+    this.activeDownloads.delete(modelId);
+  }
+
+  async deleteModel(modelId: string): Promise<void> {
+    await FileSystem.deleteAsync(this.getModelPath(modelId), { idempotent: true });
+  }
+
+  async listDownloadedModels(): Promise<string[]> {
+    await this.ensureDir();
+    const entries = await FileSystem.readDirectoryAsync(this.modelsDir);
+    return entries
+      .filter((e) => e.endsWith('.gguf'))
+      .map((e) => e.replace(/\.gguf$/, ''));
+  }
+
+  async getDownloadedSize(modelId: string): Promise<number> {
+    const info = await FileSystem.getInfoAsync(this.getModelPath(modelId), { size: true });
+    return info.exists ? info.size ?? 0 : 0;
+  }
+}
+
+let singleton: ModelManager | null = null;
+
+export function getModelManager(): ModelManager {
+  if (!singleton) singleton = new ModelManager();
+  return singleton;
+      }
