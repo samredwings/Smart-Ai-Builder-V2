@@ -1,6 +1,4 @@
 // app/(tabs)/index.tsx
-// Chat screen with real AI streaming, provider indicators, and multi-provider fallback
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
@@ -167,13 +165,13 @@ export default function ChatScreen() {
             style={[
               styles.messageText,
               isUser ? styles.userText : styles.assistantText,
-              item.error ? styles.errorText : null,
+              item.error && styles.errorText,
             ]}
           >
             {item.text || (item.isStreaming ? 'Thinking...' : '')}
           </Text>
 
-          {!isUser && item.provider && !item.isStreaming ? (
+          {!isUser && item.provider && !item.isStreaming && (
             <View style={styles.providerBadge}>
               <View
                 style={[
@@ -186,15 +184,15 @@ export default function ChatScreen() {
                 {item.model ? ` · ${item.model}` : ''}
               </Text>
             </View>
-          ) : null}
+          )}
 
-          {!isUser && item.isStreaming ? (
+          {!isUser && item.isStreaming && (
             <ActivityIndicator
               size="small"
               color="#6366F1"
               style={styles.streamingIndicator}
             />
-          ) : null}
+          )}
         </View>
       </View>
     );
@@ -202,15 +200,15 @@ export default function ChatScreen() {
 
   const EmptyState = () => (
     <View style={styles.emptyState}>
-      <Ionicons name="hardware-chip-outline" size={48} color="#4B5563" />
-      <Text style={styles.emptyTitle}>Smart AI Builder</Text>
+      <Ionicons name="chatbubbles-outline" size={48} color="#4B5563" />
+      <Text style={styles.emptyTitle}>Start Building</Text>
       <Text style={styles.emptySubtitle}>
         Describe a component, feature, or paste code for analysis. Your AI co-builder is ready.
       </Text>
       {availableProviders.length === 0 ? (
         <TouchableOpacity
           style={styles.setupButton}
-          onPress={() => router.push('/(tabs)/roadmap')}
+          onPress={() => router.push('/settings')}
         >
           <Text style={styles.setupButtonText}>Configure API Keys</Text>
         </TouchableOpacity>
@@ -219,7 +217,7 @@ export default function ChatScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Smart AI Builder</Text>
@@ -243,16 +241,16 @@ export default function ChatScreen() {
         </View>
         <TouchableOpacity
           style={styles.settingsButton}
-          onPress={() => router.push('/(tabs)/roadmap')}
+          onPress={() => router.push('/settings')}
         >
-          <Ionicons name="settings-outline" size={22} color="#9CA3AF" />
+          <Ionicons name="settings-outline" size={24} color="#E5E7EB" />
         </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -263,7 +261,7 @@ export default function ChatScreen() {
             styles.listContent,
             messages.length === 0 && styles.listContentEmpty,
           ]}
-          ListEmptyComponent={<EmptyState />}
+          ListEmptyComponent={EmptyState}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={scrollToBottom}
         />
@@ -273,22 +271,23 @@ export default function ChatScreen() {
             style={styles.input}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Describe a feature or paste code..."
+            placeholder="Describe your app idea..."
             placeholderTextColor="#6B7280"
             multiline
-            maxLength={4000}
-            editable={!isLoading}
-            onSubmitEditing={sendMessage}
+            maxLength={2000}
           />
           <TouchableOpacity
-            style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
+            ]}
             onPress={sendMessage}
             disabled={!inputText.trim() || isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color="#000" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Ionicons name="arrow-up" size={20} color="#000" />
+              <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </View>
