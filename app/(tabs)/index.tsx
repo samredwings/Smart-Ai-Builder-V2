@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   streamAiResponse,
   getAvailableProviders,
-  getQuotaStatus,
   initializeAIService,
 } from '@/services/ai';
 import { useRouter } from 'expo-router';
@@ -41,7 +40,6 @@ export default function ChatScreen() {
   const [availableProviders, setAvailableProviders] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
 
-  // Check available providers on mount
   useEffect(() => {
     const checkProviders = async () => {
       try {
@@ -80,10 +78,7 @@ export default function ChatScreen() {
     setIsLoading(true);
     scrollToBottom();
 
-    // Build context from previous messages
-    const context = messages
-      .map((m) => `${m.role}: ${m.text}`)
-      .join('\n');
+    const context = messages.map((m) => `${m.role}: ${m.text}`).join('\n');
 
     try {
       const result = await streamAiResponse(
@@ -103,7 +98,6 @@ export default function ChatScreen() {
         context
       );
 
-      // Finalize the message
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -128,7 +122,6 @@ export default function ChatScreen() {
       });
     } finally {
       setIsLoading(false);
-      // Refresh available providers (quota may have changed)
       setAvailableProviders(getAvailableProviders());
     }
   };
@@ -157,7 +150,6 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
-
     return (
       <View
         style={[
@@ -175,13 +167,13 @@ export default function ChatScreen() {
             style={[
               styles.messageText,
               isUser ? styles.userText : styles.assistantText,
-              item.error && styles.errorText,
+              item.error ? styles.errorText : null,
             ]}
           >
             {item.text || (item.isStreaming ? 'Thinking...' : '')}
           </Text>
 
-          {!isUser && item.provider && !item.isStreaming && (
+          {!isUser && item.provider && !item.isStreaming ? (
             <View style={styles.providerBadge}>
               <View
                 style={[
@@ -194,23 +186,40 @@ export default function ChatScreen() {
                 {item.model ? ` · ${item.model}` : ''}
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {!isUser && item.isStreaming && (
+          {!isUser && item.isStreaming ? (
             <ActivityIndicator
               size="small"
               color="#6366F1"
               style={styles.streamingIndicator}
             />
-          )}
+          ) : null}
         </View>
       </View>
     );
   };
 
+  const EmptyState = () => (
+    <View style={styles.emptyState}>
+      <Ionicons name="hardware-chip-outline" size={48} color="#4B5563" />
+      <Text style={styles.emptyTitle}>Smart AI Builder</Text>
+      <Text style={styles.emptySubtitle}>
+        Describe a component, feature, or paste code for analysis. Your AI co-builder is ready.
+      </Text>
+      {availableProviders.length === 0 ? (
+        <TouchableOpacity
+          style={styles.setupButton}
+          onPress={() => router.push('/(tabs)/roadmap')}
+        >
+          <Text style={styles.setupButtonText}>Configure API Keys</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      {/* Header with provider status */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Smart AI Builder</Text>
@@ -233,4 +242,243 @@ export default function ChatScreen() {
           </View>
         </View>
         <TouchableOpacity
-          style={styles.set
+          style={styles.settingsButton}
+          onPress={() => router.push('/(tabs)/roadmap')}
+        >
+          <Ionicons name="settings-outline" size={22} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          contentContainerStyle={[
+            styles.listContent,
+            messages.length === 0 && styles.listContentEmpty,
+          ]}
+          ListEmptyComponent={<EmptyState />}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={scrollToBottom}
+        />
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="Describe a feature or paste code..."
+            placeholderTextColor="#6B7280"
+            multiline
+            maxLength={4000}
+            editable={!isLoading}
+            onSubmitEditing={sendMessage}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
+            onPress={sendMessage}
+            disabled={!inputText.trim() || isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Ionicons name="arrow-up" size={20} color="#000" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0A0A0A',
+  },
+  flex: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F2937',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#F9FAFB',
+    letterSpacing: 0.3,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#10B981',
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#111827',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listContent: {
+    padding: 16,
+    gap: 12,
+  },
+  listContentEmpty: {
+    flex: 1,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#F9FAFB',
+    marginTop: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  setupButton: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: '#1F2937',
+    borderRadius: 20,
+  },
+  setupButtonText: {
+    color: '#F9FAFB',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  userMessage: {
+    justifyContent: 'flex-end',
+  },
+  assistantMessage: {
+    justifyContent: 'flex-start',
+  },
+  avatarContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1F2937',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  bubble: {
+    maxWidth: '80%',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  userBubble: {
+    backgroundColor: '#4F46E5',
+    borderBottomRightRadius: 4,
+  },
+  assistantBubble: {
+    backgroundColor: '#111827',
+    borderBottomLeftRadius: 4,
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  userText: {
+    color: '#F9FAFB',
+  },
+  assistantText: {
+    color: '#E5E7EB',
+  },
+  errorText: {
+    color: '#F87171',
+  },
+  providerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  providerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  providerText: {
+    fontSize: 10,
+    color: '#6B7280',
+  },
+  streamingIndicator: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1F2937',
+    backgroundColor: '#0A0A0A',
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#111827',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    color: '#F9FAFB',
+    fontSize: 15,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F59E0B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.4,
+  },
+});
