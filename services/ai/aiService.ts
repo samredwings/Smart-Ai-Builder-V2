@@ -1,6 +1,5 @@
 // services/ai/aiService.ts
 // Top-level AI service initializer + singleton accessor
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AIOrchestrator, OrchestratorConfig } from './orchestrator';
 
@@ -46,7 +45,6 @@ export function getAIOrchestrator(): AIOrchestrator | null {
 
 export async function saveApiKeys(keys: StoredApiKeys): Promise<void> {
   await AsyncStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
-  // Re-initialize with new keys
   await initializeAIService();
 }
 
@@ -61,6 +59,20 @@ export async function loadApiKeys(): Promise<StoredApiKeys> {
 
 export function getAvailableProviders(): string[] {
   return orchestratorSingleton?.getAvailableProviders() ?? [];
+}
+
+// Non-streaming one-shot response (used by useAIRequirements)
+export async function getAiResponse(
+  prompt: string,
+  context?: string
+): Promise<{ text: string; provider: string; model: string }> {
+  if (!orchestratorSingleton) {
+    await initializeAIService();
+  }
+  if (!orchestratorSingleton) {
+    throw new Error('AI service not initialized');
+  }
+  return orchestratorSingleton.chat(prompt, context);
 }
 
 export async function streamAiResponse(
