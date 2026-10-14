@@ -10,10 +10,14 @@ import {
   Share,
   Alert,
   Platform,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 import { useProject } from '@/hooks/useProject';
 import {
   runCodeGenerationPipeline,
@@ -23,18 +27,39 @@ import {
   GeneratedFile,
 } from '@/services/ai/codePipeline';
 import { createZipFromFiles } from '@/services/zipService';
+import {
+  initRepo,
+  addAllAndCommit,
+  setupRemote,
+  pushRepo,
+  hasRepo,
+} from '@/services/gitService';
 
 type ExportStep = 'idle' | 'generating' | 'writing' | 'zipping' | 'done' | 'error';
+
+const GIT_URL_KEY = '@github_remote_url';
+const GIT_TOKEN_KEY = '@github_token';
+const GIT_NAME_KEY = '@github_author_name';
+const GIT_EMAIL_KEY = '@github_author_email';
 
 export default function ExportScreen() {
   const router = useRouter();
   const { project } = useProject();
+
   const [step, setStep] = useState<ExportStep>('idle');
   const [progressText, setProgressText] = useState('');
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [zipUri, setZipUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<GeneratedFile[]>([]);
+
+  const [showGitModal, setShowGitModal] = useState(false);
+  const [gitUrl, setGitUrl] = useState('');
+  const [gitToken, setGitToken] = useState('');
+  const [gitName, setGitName] = useState('');
+  const [gitEmail, setGitEmail] = useState('');
+  const [pushing, setPushing] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
 
   const startBuild = async () => {
     if (!project) {
@@ -87,7 +112,7 @@ export default function ExportScreen() {
         url: zipUri,
         message: `Project: ${project?.name || 'Untitled'}`,
       });
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to share ZIP file');
     }
   };
@@ -108,6 +133,70 @@ export default function ExportScreen() {
         },
       },
     ]);
+  };
+
+  const openPushModal = async () => {
+    if (!project) return;
+    const [savedUrl, savedToken, savedName, savedEmail] = await Promise.all([
+      AsyncStorage.getItem(GIT_URL_KEY),
+      AsyncStorage.getItem(GIT_TOKEN_KEY),
+      AsyncStorage.getItem(GIT_NAME_KEY),
+      AsyncStorage.getItem(GIT_EMAIL_KEY),
+    ]);
+    if (savedUrl) setGitUrl(savedUrl);
+    if (savedToken) setGitToken(savedToken);
+    if (savedName) setGitName(savedName);
+    if (savedEmail) setGitEmail(savedEmail);
+    setPushMessage('');
+    setShowGitModal(true);
+  };
+
+  const handlePush = async () => {
+    if (!gitUrl || !gitToken || !gitName || !gitEmail) {
+      Alert.alert('Missing Info', 'Fill in all GitHub fields.');
+      return;
+    }
+    if (!project) return;
+
+    setPushing(true);
+    setPushMessage('Initializing...');
+
+    try {
+      await AsyncStorage.multiSet([
+        [GIT_URL_KEY, gitUrl],
+        [GIT_TOKEN_KEY, gitToken],
+        [GIT_NAME_KEY, gitName],
+        [GIT_EMAIL_KEY, gitEmail],
+      ]);
+
+      const projectDir = `${FileSystem.documentDirectory}projects/${project.id}/`;
+
+      setPushMessage('Setting up repository...');
+      const repoExists = await hasRepo(projectDir);
+      if (!repoExists) {
+        await initRepo(projectDir);
+      }
+
+      setPushMessage('Configuring remote...');
+      await setupRemote(projectDir, gitUrl);
+
+      setPushMessage('Committing files...');
+      await addAllAndCommit(projectDir, `Build: ${project.name || 'update'}`, {
+        name: gitName,
+        email: gitEmail,
+      });
+
+      setPushMessage('Pushing to GitHub...');
+      await pushRepo(projectDir, gitToken);
+
+      setPushMessage('Pushed successfully!');
+      setTimeout(() => setShowGitModal(false), 1200);
+    } catch (e: any) {
+      console.error('Git push error:', e);
+      setPushMessage(`Push failed: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setPushing(false);
+    }
   };
 
   const getStepIcon = (): React.ComponentProps<typeof Ionicons>['name'] => {
@@ -251,6 +340,11 @@ export default function ExportScreen() {
               <Text style={styles.actionText}>Preview Code</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#24292F' }]} onPress={openPushModal}>
+              <Ionicons name="logo-github" size={18} color="#FFFFFF" />
+              <Text style={styles.actionText}>Push to GitHub</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={handleClear}>
               <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
               <Text style={[styles.actionText, styles.secondaryText]}>Clear Files</Text>
@@ -262,12 +356,86 @@ export default function ExportScreen() {
           <Ionicons name="information-circle" size={18} color="#60A5FA" />
           <Text style={styles.infoText}>
             The AI will generate code files, write them to storage, and package them into a ZIP.
-            You can then share the ZIP, extract it, and run with `npx expo start`.
+            You can then share the ZIP, push to GitHub, or preview the code.
           </Text>
         </View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      <Modal
+        visible={showGitModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !pushing && setShowGitModal(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.card}>
+            <Text style={modalStyles.title}>Push to GitHub</Text>
+
+            <TextInput
+              style={modalStyles.input}
+              placeholder="Repo URL (https://github.com/user/repo.git)"
+              placeholderTextColor="#64748B"
+              value={gitUrl}
+              onChangeText={setGitUrl}
+              autoCapitalize="none"
+              editable={!pushing}
+            />
+            <TextInput
+              style={modalStyles.input}
+              placeholder="Personal Access Token"
+              placeholderTextColor="#64748B"
+              value={gitToken}
+              onChangeText={setGitToken}
+              secureTextEntry
+              editable={!pushing}
+            />
+            <TextInput
+              style={modalStyles.input}
+              placeholder="Git Author Name"
+              placeholderTextColor="#64748B"
+              value={gitName}
+              onChangeText={setGitName}
+              editable={!pushing}
+            />
+            <TextInput
+              style={modalStyles.input}
+              placeholder="Git Author Email"
+              placeholderTextColor="#64748B"
+              value={gitEmail}
+              onChangeText={setGitEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              editable={!pushing}
+            />
+
+            {pushMessage ? (
+              <Text style={modalStyles.status}>{pushMessage}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[modalStyles.pushButton, pushing && modalStyles.pushButtonDisabled]}
+              onPress={handlePush}
+              disabled={pushing}
+            >
+              {pushing ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={modalStyles.pushButtonText}>Push to main</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={modalStyles.cancelButton}
+              onPress={() => setShowGitModal(false)}
+              disabled={pushing}
+            >
+              <Text style={modalStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -499,3 +667,41 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: '#000000AA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  input: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#F8FAFC',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  status: {
+    fontSize: 13,
+    color: '#94A3B8'
