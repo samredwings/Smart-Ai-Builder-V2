@@ -1,6 +1,4 @@
 // app/(tabs)/export.tsx
-// Export tab — generates real ZIP from AI-generated project files
-
 import React, { useState } from 'react';
 import {
   View,
@@ -15,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useProject } from '@/hooks/useProject';
 import {
   runCodeGenerationPipeline,
@@ -28,6 +27,7 @@ import { createZipFromFiles } from '@/services/zipService';
 type ExportStep = 'idle' | 'generating' | 'writing' | 'zipping' | 'done' | 'error';
 
 export default function ExportScreen() {
+  const router = useRouter();
   const { project } = useProject();
   const [step, setStep] = useState<ExportStep>('idle');
   const [progressText, setProgressText] = useState('');
@@ -136,15 +136,10 @@ export default function ExportScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Export & Build</Text>
-        {project && (
-          <Text style={styles.projectName} numberOfLines={1}>
-            {project.name}
-          </Text>
-        )}
+        {project && <Text style={styles.projectName}>{project.name}</Text>}
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* Status Card */}
         <View style={[styles.statusCard, { borderColor: getStepColor() + '40' }]}>
           <View style={[styles.statusIconContainer, { backgroundColor: getStepColor() + '20' }]}>
             {isBuilding ? (
@@ -183,7 +178,6 @@ export default function ExportScreen() {
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
-        {/* Build Button */}
         {isBuilding ? (
           <View style={styles.buildButtonLoading}>
             <ActivityIndicator color="#FFFFFF" />
@@ -202,7 +196,6 @@ export default function ExportScreen() {
           </TouchableOpacity>
         )}
 
-        {/* File Tree */}
         {fileTree.length > 0 ? (
           <View style={styles.filesCard}>
             <View style={styles.filesHeader}>
@@ -224,12 +217,22 @@ export default function ExportScreen() {
           </View>
         ) : null}
 
-        {/* ZIP Actions */}
         {zipUri ? (
           <View style={styles.actionsCard}>
             <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
               <Ionicons name="share-outline" size={18} color="#FFFFFF" />
               <Text style={styles.actionText}>Share ZIP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push({
+                pathname: '/preview',
+                params: { projectId: project?.id }
+              })}
+            >
+              <Ionicons name="eye-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.actionText}>Preview Code</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={handleClear}>
@@ -239,7 +242,6 @@ export default function ExportScreen() {
           </View>
         ) : null}
 
-        {/* Info */}
         <View style={styles.infoCard}>
           <Ionicons name="information-circle" size={18} color="#60A5FA" />
           <Text style={styles.infoText}>
