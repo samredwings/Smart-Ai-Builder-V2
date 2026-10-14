@@ -1,9 +1,10 @@
+// app/_layout.tsx
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
 import { ProjectProvider } from '@/contexts/ProjectContext';
-import { initializeAIService } from '@/services/ai/aiService';
+import { initializeAIService } from '@/services/ai';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function RootLayout() {
         <ProjectProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="settings" />
           </Stack>
         </ProjectProvider>
       </SafeAreaProvider>
