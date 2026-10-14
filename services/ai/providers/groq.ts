@@ -1,20 +1,15 @@
 // services/ai/providers/groq.ts
-// Groq API provider with streaming support
+// Groq provider — ultra-fast inference with Llama/Mixtral models
+// Free tier: 14,400 RPD, 30 RPM
 
 import { AIProvider, CodeGenRequest, CodeGenResponse } from '../types';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert React Native and Expo developer.
-Your task is to generate clean, production-ready TypeScript code for mobile apps.
-Follow these rules:
-1. Use Expo SDK and React Native best practices
-2. Use functional components with hooks
-3. Style with StyleSheet.create() or NativeWind
-4. Import from correct paths: @/components, @/constants, @/hooks
-5. Respond with code inside markdown code blocks
-6. After code, provide a brief explanation of what was built
-7. If generating multiple files, clearly label each file`;
+Generate clean, production-ready TypeScript code for mobile apps.
+Use functional components, hooks, and StyleSheet.create().
+Respond with code inside markdown code blocks.`;
 
 export class GroqProvider implements AIProvider {
   id = 'groq';
@@ -27,7 +22,7 @@ export class GroqProvider implements AIProvider {
   requiresApiKey = true;
   rateLimits = {
     requestsPerMinute: 30,
-    requestsPerDay: 1000,
+    requestsPerDay: 14400,
   };
 
   isAvailable(apiKey?: string): boolean {
@@ -50,10 +45,7 @@ export class GroqProvider implements AIProvider {
       body: JSON.stringify({
         model,
         messages: [
-          {
-            role: 'system',
-            content: request.systemPrompt || DEFAULT_SYSTEM_PROMPT,
-          },
+          { role: 'system', content: request.systemPrompt || DEFAULT_SYSTEM_PROMPT },
           {
             role: 'user',
             content: request.context
@@ -68,51 +60,44 @@ export class GroqProvider implements AIProvider {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        `Groq API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`
-      );
+      const err = await response.text().catch(() => 'Unknown');
+      throw new Error(`Groq error: ${response.status} - ${err}`);
     }
 
-    if (!response.body) {
-      throw new Error('Groq API returned empty response body');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
     let fullText = '';
-    let buffer = '';
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) continue;
-
-          const jsonStr = trimmed.slice(6);
-          if (jsonStr === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const chunk = parsed.choices?.[0]?.delta?.content || '';
-            if (chunk) {
-              fullText += chunk;
-              onChunk?.(fullText);
-            }
-          } catch {
-            // Skip malformed SSE chunks
+    const reader = response.body?.getReader();
+    if (reader) {
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) continue;
+            const jsonStr = trimmed.slice(6);
+            if (jsonStr === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const chunk = parsed.choices?.[0]?.delta?.content || '';
+              if (chunk) {
+                fullText += chunk;
+                onChunk?.(fullText);
+              }
+            } catch { /* skip malformed */ }
           }
         }
+      } finally {
+        reader.releaseLock();
       }
-    } finally {
-      reader.releaseLock();
+    } else {
+      fullText = await response.text();
+      onChunk?.(fullText);
     }
 
     return {
@@ -124,19 +109,14 @@ export class GroqProvider implements AIProvider {
   }
 
   private extractCode(text: string): string {
-    const codeBlockRegex = /```(?:typescript|tsx|jsx|javascript)?\n([\s\S]*?)```/g;
+    const re = /```(?:typescript|tsx|jsx|javascript)?\n([\s\S]*?)```/g;
     const matches: string[] = [];
-    let match;
-    while ((match = codeBlockRegex.exec(text)) !== null) {
-      matches.push(match[1].trim());
-    }
+    let m;
+    while ((m = re.exec(text)) !== null) matches.push(m[1].trim());
     return matches.join('\n\n// --- File Separator ---\n\n') || text;
   }
 
   private extractExplanation(text: string): string {
-    return text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    return text.replace(/```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
   }
 }

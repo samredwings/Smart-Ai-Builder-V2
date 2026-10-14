@@ -1,16 +1,15 @@
 import { useEffect } from 'react';
-import { initializeAIService } from '@/services/ai';
-
-// Inside your layout component:
-useEffect(() => {
-  initializeAIService().catch(console.error);
-}, []);
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AlertProvider } from '@/template';
 import { ProjectProvider } from '@/contexts/ProjectContext';
+import { initializeAIService } from '@/services/ai/aiService';
 
 export default function RootLayout() {
+  useEffect(() => {
+    initializeAIService().catch(console.error);
+  }, []);
+
   return (
     <AlertProvider>
       <SafeAreaProvider>

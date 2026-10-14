@@ -30,7 +30,7 @@ export const pickAndExtractZipArchive = async (): Promise<ExtractedFile[]> => {
   }
 
   const selectedFile = pickerResult.assets[0];
-  
+
   const base64Data = await FileSystem.readAsStringAsync(selectedFile.uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
@@ -43,20 +43,10 @@ export const pickAndExtractZipArchive = async (): Promise<ExtractedFile[]> => {
 
   for (const [relativePath, zipEntry] of Object.entries(loadedZip.files)) {
     if (zipEntry.dir) {
-      extractedFiles.push({
-        path: relativePath,
-        content: '',
-        isDirectory: true,
-        sizeBytes: 0,
-      });
+      extractedFiles.push({ path: relativePath, content: '', isDirectory: true, sizeBytes: 0 });
     } else {
       const fileText = await zipEntry.async('string');
-      extractedFiles.push({
-        path: relativePath,
-        content: fileText,
-        isDirectory: false,
-        sizeBytes: fileText.length,
-      });
+      extractedFiles.push({ path: relativePath, content: fileText, isDirectory: false, sizeBytes: fileText.length });
     }
   }
 
