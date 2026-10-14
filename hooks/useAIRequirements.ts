@@ -1,8 +1,11 @@
 // hooks/useAIRequirements.ts
-// Bridges chat messages to structured requirements for the build pipeline
+// Bridges chat messages to structured requirements with persistent storage
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAiResponse } from '@/services/ai';
+
+const REQUIREMENTS_STORAGE_KEY = '@ai_requirements_v2';
 
 export type RequirementStatus = 'planned' | 'in_progress' | 'completed' | 'changed';
 
@@ -15,13 +18,39 @@ export interface Requirement {
   createdAt: number;
 }
 
-const REQUIREMENTS_STORAGE_KEY = '@ai_requirements';
-
 export function useAIRequirements() {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [extracting, setExtracting] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  // Extract requirements from a user chat message using AI
+  // Load from AsyncStorage on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(REQUIREMENTS_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setRequirements(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load requirements:', e);
+      } finally {
+        setLoaded(true);
+      }
+    };
+    load();
+  }, []);
+
+  // Persist to AsyncStorage whenever requirements change
+  useEffect(() => {
+    if (!loaded) return;
+    AsyncStorage.setItem(REQUIREMENTS_STORAGE_KEY, JSON.stringify(requirements)).catch(
+      console.error
+    );
+  }, [requirements, loaded]);
+
   const extractFromMessage = useCallback(async (message: string): Promise<Requirement[]> => {
     setExtracting(true);
     try {
@@ -54,10 +83,14 @@ User request: "${message}"`
       }));
 
       setRequirements((prev) => {
-        // Merge: avoid duplicates by text similarity
         const existingTexts = prev.map((r) => r.text.toLowerCase());
         const filtered = newReqs.filter(
-          (r) => !existingTexts.some((et) => r.text.toLowerCase().includes(et) || et.includes(r.text.toLowerCase()))
+          (r) =>
+            !existingTexts.some(
+              (et) =>
+                r.text.toLowerCase().includes(et) ||
+                et.includes(r.text.toLowerCase())
+            )
         );
         return [...prev, ...filtered];
       });
@@ -90,28 +123,38 @@ User request: "${message}"`
     );
   }, []);
 
+  const updateText = useCallback((id: string, text: string) => {
+    setRequirements((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, text } : r))
+    );
+  }, []);
+
   const removeRequirement = useCallback((id: string) => {
     setRequirements((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const clearAll = useCallback(() => {
     setRequirements([]);
+    AsyncStorage.removeItem(REQUIREMENTS_STORAGE_KEY).catch(console.error);
   }, []);
 
-  const getCompletedCount = useCallback(() => {
-    return requirements.filter((r) => r.status === 'completed').length;
-  }, [requirements]);
+  const reorder = useCallback((newOrder: Requirement[]) => {
+    setRequirements(newOrder);
+  }, []);
 
   return {
     requirements,
     extracting,
+    loaded,
     extractFromMessage,
     addManual,
     updateStatus,
+    updateText,
     removeRequirement,
     clearAll,
-    getCompletedCount,
+    reorder,
     total: requirements.length,
     completed: requirements.filter((r) => r.status === 'completed').length,
+    inProgress: requirements.filter((r) => r.status === 'in_progress').length,
   };
-          }
+}
