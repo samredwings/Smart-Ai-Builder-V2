@@ -1,4 +1,6 @@
 // app/_layout.tsx
+import { Buffer } from 'buffer';
+if (typeof global.Buffer === 'undefined') global.Buffer = Buffer;
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { initializeAIService } from '@/services/ai';
