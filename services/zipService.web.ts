@@ -7,6 +7,20 @@ export interface ExtractedFile {
   sizeBytes: number;
 }
 
+export const createZipFromFiles = async (
+  files: { path: string; content: string }[],
+  filename: string
+): Promise<string> => {
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+  for (const file of files) {
+    zip.file(file.path, file.content);
+  }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  return url;
+};
+
 export const pickAndExtractZipArchive = async (): Promise<ExtractedFile[]> => {
   return new Promise((resolve) => {
     const input = document.createElement('input');

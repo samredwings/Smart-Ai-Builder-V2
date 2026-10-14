@@ -19,6 +19,22 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+export const createZipFromFiles = async (
+  files: { path: string; content: string }[],
+  filename: string
+): Promise<string> => {
+  const zip = new JSZip();
+  for (const file of files) {
+    zip.file(file.path, file.content);
+  }
+  const base64 = await zip.generateAsync({ type: 'base64' });
+  const dest = `${FileSystem.cacheDirectory}${filename}`;
+  await FileSystem.writeAsStringAsync(dest, base64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return dest;
+};
+
 export const pickAndExtractZipArchive = async (): Promise<ExtractedFile[]> => {
   const pickerResult = await DocumentPicker.getDocumentAsync({
     type: ['application/zip', 'application/x-zip-compressed'],

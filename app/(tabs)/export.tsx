@@ -1,8 +1,7 @@
 // app/(tabs)/export.tsx
 // Export tab — generates real ZIP from AI-generated project files
-// Replaces the mock animation with actual FileSystem + zipService integration
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,10 +11,11 @@ import {
   StyleSheet,
   Share,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useProjectStore } from '@/stores/useProjectStore';
+import { useProject } from '@/hooks/useProject';
 import {
   runCodeGenerationPipeline,
   readProjectFiles,
@@ -25,16 +25,10 @@ import {
 } from '@/services/ai/codePipeline';
 import { createZipFromFiles } from '@/services/zipService';
 
-type ExportStep =
-  | 'idle'
-  | 'generating'
-  | 'writing'
-  | 'zipping'
-  | 'done'
-  | 'error';
+type ExportStep = 'idle' | 'generating' | 'writing' | 'zipping' | 'done' | 'error';
 
 export default function ExportScreen() {
-  const { currentProject } = useProjectStore();
+  const { project } = useProject();
   const [step, setStep] = useState<ExportStep>('idle');
   const [progressText, setProgressText] = useState('');
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -43,7 +37,7 @@ export default function ExportScreen() {
   const [fileTree, setFileTree] = useState<GeneratedFile[]>([]);
 
   const startBuild = async () => {
-    if (!currentProject) {
+    if (!project) {
       Alert.alert('No Project', 'Create or select a project first.');
       return;
     }
@@ -56,13 +50,11 @@ export default function ExportScreen() {
     setFileTree([]);
 
     try {
-      // Clear previous files
-      await clearProjectFiles(currentProject.id);
+      await clearProjectFiles(project.id);
 
-      // Run the pipeline
       const pipelineResult = await runCodeGenerationPipeline(
-        currentProject.description || 'Build a simple React Native app',
-        currentProject,
+        project.name || 'Build a simple React Native app',
+        project,
         undefined,
         (stepMsg) => {
           setProgressText(stepMsg);
@@ -75,9 +67,8 @@ export default function ExportScreen() {
       setStep('zipping');
       setProgressText('Creating ZIP archive...');
 
-      // Create ZIP
-      const filesForZip = await readProjectFiles(currentProject.id);
-      const zipPath = await createZipFromFiles(filesForZip, `${currentProject.id}.zip`);
+      const filesForZip = await readProjectFiles(project.id);
+      const zipPath = await createZipFromFiles(filesForZip, `${project.id}.zip`);
       setZipUri(zipPath);
 
       setStep('done');
@@ -94,7 +85,7 @@ export default function ExportScreen() {
     try {
       await Share.share({
         url: zipUri,
-        message: `Project: ${currentProject?.name || 'Untitled'}`,
+        message: `Project: ${project?.name || 'Untitled'}`,
       });
     } catch (e) {
       Alert.alert('Error', 'Failed to share ZIP file');
@@ -102,28 +93,24 @@ export default function ExportScreen() {
   };
 
   const handleClear = async () => {
-    if (!currentProject) return;
-    Alert.alert(
-      'Clear Files',
-      'Delete all generated files for this project?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            await clearProjectFiles(currentProject.id);
-            setResult(null);
-            setZipUri(null);
-            setFileTree([]);
-            setStep('idle');
-          },
+    if (!project) return;
+    Alert.alert('Clear Files', 'Delete all generated files for this project?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          await clearProjectFiles(project.id);
+          setResult(null);
+          setZipUri(null);
+          setFileTree([]);
+          setStep('idle');
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const getStepIcon = () => {
+  const getStepIcon = (): React.ComponentProps<typeof Ionicons>['name'] => {
     switch (step) {
       case 'idle': return 'cube-outline';
       case 'generating': return 'hardware-chip-outline';
@@ -143,13 +130,15 @@ export default function ExportScreen() {
     }
   };
 
+  const isBuilding = step === 'generating' || step === 'writing' || step === 'zipping';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Export & Build</Text>
-        {currentProject && (
+        {project && (
           <Text style={styles.projectName} numberOfLines={1}>
-            {currentProject.name}
+            {project.name}
           </Text>
         )}
       </View>
@@ -158,10 +147,10 @@ export default function ExportScreen() {
         {/* Status Card */}
         <View style={[styles.statusCard, { borderColor: getStepColor() + '40' }]}>
           <View style={[styles.statusIconContainer, { backgroundColor: getStepColor() + '20' }]}>
-            {step === 'idle' || step === 'done' || step === 'error' ? (
-              <Ionicons name={getStepIcon() as any} size={32} color={getStepColor()} />
-            ) : (
+            {isBuilding ? (
               <ActivityIndicator size="large" color={getStepColor()} />
+            ) : (
+              <Ionicons name={getStepIcon()} size={32} color={getStepColor()} />
             )}
           </View>
           <Text style={[styles.statusTitle, { color: getStepColor() }]}>
@@ -174,7 +163,7 @@ export default function ExportScreen() {
           </Text>
           <Text style={styles.statusSubtitle}>{progressText}</Text>
 
-          {result && (
+          {result ? (
             <View style={styles.metaContainer}>
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Provider</Text>
@@ -189,34 +178,32 @@ export default function ExportScreen() {
                 <Text style={styles.metaValue}>{result.files.length}</Text>
               </View>
             </View>
-          )}
+          ) : null}
 
-          {error && (
-            <Text style={styles.errorText}>{error}</Text>
-          )}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
         {/* Build Button */}
-        {step === 'idle' || step === 'done' || step === 'error' ? (
+        {isBuilding ? (
+          <View style={styles.buildButtonLoading}>
+            <ActivityIndicator color="#FFFFFF" />
+            <Text style={styles.buildButtonText}>Building...</Text>
+          </View>
+        ) : (
           <TouchableOpacity
-            style={[styles.buildButton, !currentProject && styles.buildButtonDisabled]}
+            style={[styles.buildButton, !project && styles.buildButtonDisabled]}
             onPress={startBuild}
-            disabled={!currentProject}
+            disabled={!project}
           >
             <Ionicons name="play" size={18} color="#FFFFFF" />
             <Text style={styles.buildButtonText}>
               {step === 'done' ? 'Rebuild Project' : 'Start Build'}
             </Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.buildButtonLoading}>
-            <ActivityIndicator color="#FFFFFF" />
-            <Text style={styles.buildButtonText}>Building...</Text>
-          </View>
         )}
 
         {/* File Tree */}
-        {fileTree.length > 0 && (
+        {fileTree.length > 0 ? (
           <View style={styles.filesCard}>
             <View style={styles.filesHeader}>
               <Ionicons name="folder-open-outline" size={18} color="#94A3B8" />
@@ -235,10 +222,10 @@ export default function ExportScreen() {
               </View>
             ))}
           </View>
-        )}
+        ) : null}
 
         {/* ZIP Actions */}
-        {zipUri && (
+        {zipUri ? (
           <View style={styles.actionsCard}>
             <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
               <Ionicons name="share-outline" size={18} color="#FFFFFF" />
@@ -250,7 +237,7 @@ export default function ExportScreen() {
               <Text style={[styles.actionText, styles.secondaryText]}>Clear Files</Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
         {/* Info */}
         <View style={styles.infoCard}>
