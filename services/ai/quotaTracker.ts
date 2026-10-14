@@ -3,6 +3,7 @@
 
 export interface QuotaStatus {
   requestsRemaining: number;
+  requestsPerDay: number;
   minuteRequestsRemaining: number;
   resetAt: string | null;
 }
@@ -65,6 +66,7 @@ export class QuotaTracker {
     if (quota.exhausted) {
       return {
         requestsRemaining: 0,
+        requestsPerDay: rateLimits.requestsPerDay,
         minuteRequestsRemaining: 0,
         resetAt: new Date(quota.dayStartTime + 86_400_000).toISOString(),
       };
@@ -72,6 +74,7 @@ export class QuotaTracker {
 
     return {
       requestsRemaining: Math.max(0, rateLimits.requestsPerDay - quota.requestsToday),
+      requestsPerDay: rateLimits.requestsPerDay,
       minuteRequestsRemaining: Math.max(0, rateLimits.requestsPerMinute - quota.requestsThisMinute),
       resetAt: null,
     };

@@ -58,3 +58,29 @@ export async function loadApiKeys(): Promise<StoredApiKeys> {
     return {};
   }
 }
+
+export function getAvailableProviders(): string[] {
+  return orchestratorSingleton?.getAvailableProviders() ?? [];
+}
+
+export async function streamAiResponse(
+  prompt: string,
+  onChunk: (chunk: string, providerId: string) => void,
+  context?: string
+): Promise<{ fullText: string; provider: string; model: string }> {
+  if (!orchestratorSingleton) {
+    await initializeAIService();
+  }
+  if (!orchestratorSingleton) {
+    throw new Error('AI service not initialized');
+  }
+  return orchestratorSingleton.chatStream(prompt, onChunk, context);
+}
+
+export function getQuotaStatus(): Record<string, any> {
+  return orchestratorSingleton?.getAllQuotaStatus() ?? {};
+}
+
+export function resetAllQuotas(): void {
+  orchestratorSingleton?.resetAllQuotas();
+}
