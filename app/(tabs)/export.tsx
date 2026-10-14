@@ -135,8 +135,16 @@ export default function ExportScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Export & Build</Text>
-        {project && <Text style={styles.projectName}>{project.name}</Text>}
+        <View>
+          <Text style={styles.headerTitle}>Export & Build</Text>
+          {project && <Text style={styles.projectName}>{project.name}</Text>}
+        </View>
+        <TouchableOpacity
+          style={styles.importIconButton}
+          onPress={() => router.push('/import')}
+        >
+          <Ionicons name="download-outline" size={22} color="#E2E8F0" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
@@ -195,6 +203,14 @@ export default function ExportScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={styles.importButton}
+          onPress={() => router.push('/import')}
+        >
+          <Ionicons name="archive-outline" size={16} color="#E2E8F0" />
+          <Text style={styles.importButtonText}>Import Pre-Built ZIP</Text>
+        </TouchableOpacity>
 
         {fileTree.length > 0 ? (
           <View style={styles.filesCard}>
@@ -262,6 +278,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -276,6 +295,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94A3B8',
     marginTop: 2,
+  },
+  importIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   scroll: {
     flex: 1,
@@ -344,7 +373,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   buildButtonDisabled: {
     backgroundColor: '#374151',
@@ -357,11 +386,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   buildButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '600',
+  },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 16,
+  },
+  importButtonText: {
+    color: '#E2E8F0',
+    fontSize: 14,
     fontWeight: '600',
   },
   filesCard: {
