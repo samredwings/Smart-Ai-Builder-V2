@@ -1,6 +1,6 @@
 // services/ai/orchestrator.ts
 // Multi-AI orchestrator with fallback, quota tracking, and provider selection
-import { LlamaNativeProvider } from './providers/llamaNative';
+
 import { AIProvider, CodeGenRequest, CodeGenResponse, QuotaStatus } from './types';
 import { QuotaTracker } from './quotaTracker';
 import { GeminiProvider } from './providers/gemini';
@@ -8,9 +8,10 @@ import { GroqProvider } from './providers/groq';
 import { OpenRouterProvider } from './providers/openrouter';
 import { OllamaProvider } from './providers/ollama';
 import { HuggingFaceProvider } from './providers/huggingface';
+import { LlamaNativeProvider } from './providers/llamaNative';
 
 // Provider priority order (highest = first)
-const DEFAULT_PRIORITY = ['gemini', 'groq', 'openrouter', 'huggingface', 'ollama'];
+const DEFAULT_PRIORITY = ['gemini', 'groq', 'openrouter', 'huggingface', 'ollama', 'llama-native'];
 
 export interface OrchestratorConfig {
   apiKeys: Record<string, string>; // provider id -> api key
@@ -41,6 +42,9 @@ export class AIOrchestrator {
     } else {
       this.register('ollama', new OllamaProvider());
     }
+
+    // On-device llama.rn provider
+    this.register('llama-native', new LlamaNativeProvider());
   }
 
   private register(id: string, provider: AIProvider) {
@@ -203,4 +207,4 @@ export function getOrchestrator(): AIOrchestrator {
     throw new Error('Orchestrator not initialized. Call initOrchestrator first.');
   }
   return orchestratorInstance;
-          }
+}
