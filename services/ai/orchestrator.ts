@@ -198,4 +198,10 @@ export class AIOrchestrator {
 // Singleton instance (initialized with keys from storage)
 let orchestratorInstance: AIOrchestrator | null = null;
 
-export function
+export function setOrchestratorInstance(instance: AIOrchestrator): void {
+  orchestratorInstance = instance;
+}
+
+export function getOrchestratorInstance(): AIOrchestrator | null {
+  return orchestratorInstance;
+}
