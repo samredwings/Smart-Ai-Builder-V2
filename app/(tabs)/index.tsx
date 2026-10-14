@@ -18,6 +18,7 @@ import {
   getAvailableProviders,
   initializeAIService,
 } from '@/services/ai';
+import { useAIRequirements } from '@/hooks/useAIRequirements';
 import { useRouter } from 'expo-router';
 
 interface Message {
@@ -32,6 +33,7 @@ interface Message {
 
 export default function ChatScreen() {
   const router = useRouter();
+  const { extractFromMessage } = useAIRequirements();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -121,6 +123,7 @@ export default function ChatScreen() {
     } finally {
       setIsLoading(false);
       setAvailableProviders(getAvailableProviders());
+      extractFromMessage(userMsg.text).catch(console.error);
     }
   };
 
