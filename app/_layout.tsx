@@ -1,9 +1,6 @@
 // app/_layout.tsx
-import { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AlertProvider } from '@/template';
-import { ProjectProvider } from '@/contexts/ProjectContext';
+import { useEffect } from 'react';
 import { initializeAIService } from '@/services/ai';
 
 export default function RootLayout() {
@@ -12,17 +9,24 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AlertProvider>
-      <SafeAreaProvider>
-        <ProjectProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="settings" />
-            <Stack.Screen name="model-manager" />
-            <Stack.Screen name="preview" />
-          </Stack>
-        </ProjectProvider>
-      </SafeAreaProvider>
-    </AlertProvider>
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="settings"
+        options={{ title: 'Settings', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="model-manager"
+        options={{ title: 'Model Manager', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="preview"
+        options={{ title: 'Preview', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="import"
+        options={{ title: 'Import Project', presentation: 'modal' }}
+      />
+    </Stack>
   );
 }
